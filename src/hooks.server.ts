@@ -1,5 +1,4 @@
 import Redis from 'ioredis'
-
 import { MONGO_URI, REDIS_URI } from '$env/static/private';
 import mongoose from 'mongoose';
 import User from '$models/User';
@@ -7,35 +6,36 @@ import type { UserSession } from '$lib';
 import { redirect } from '@sveltejs/kit';
 
 export async function handle({ event, resolve }) {
-	if (event.url.pathname !== '/') {
-        event.locals.redis = new Redis(REDIS_URI, {keyPrefix: "storage_"})
-        await mongoose.connect(MONGO_URI);
-        //if there is a session
-        if(event.cookies.get("sid")) {
-            //check if the session is valid
-            const session = await event.locals.redis.get(`authsession:${event.cookies.get("sid")}`);
-            if(!session) {
-                if(event.url.pathname.startsWith("/dashboard")){
-                    throw redirect(302, '/signin');
+        event.locals.redis = new Redis(REDIS_URI, { keyPrefix: "storage_" })
+        await mongoose.connect(MONGO_URI)
+
+        if (event.url.pathname.startsWith("/auth")) {
+            return resolve(event);
+        }
+
+        if (event.url.pathname.startsWith("/dashboard") || event.url.pathname.startsWith("/api")) {
+            event.locals.user = authenticateUser(event.cookies.get("sid"), event.locals.redis);
+            if(!event.locals.user) {
+                if(event.cookies.get("sid")) {
+                    event.cookies.delete("sid", {path:"/"});
                 }
-                event.cookies.delete("sid", {path:"/"});
-                return resolve(event);
-            }
-            //parse the session
-            const parsedSession: UserSession = JSON.parse(session);
-            //find the user
-            const user = await User.findById(new mongoose.Types.ObjectId(parsedSession.userId));
-            if(user) {
-                event.locals.user = user;
-            } else {
-                //delete the session
-                event.cookies.delete("sid", {path:"/"});
-                event.locals.redis.del(`authsession:${event.cookies.get("sid")}`);
-                if(event.url.pathname.startsWith("/dashboard")) 
-                throw redirect(302, '/signin');
+                throw redirect(302, "/auth/signin");
             }
         }
-	}
+        
+    return resolve(event);
+}
 
-	return resolve(event);
+async function authenticateUser(sid: string|undefined, redis: Redis) {
+    const session = await redis.get(`authsession:${sid}`);
+    if (!session) return null;
+
+    const parsedSession: UserSession = JSON.parse(session);
+    const user = await User.findById(new mongoose.Types.ObjectId(parsedSession.userId));
+    if(!user) {
+        await redis.del(`authsession:${sid}`);
+        return null;
+    }
+
+    return user;
 }
