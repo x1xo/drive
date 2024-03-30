@@ -14,7 +14,7 @@ export async function handle({ event, resolve }) {
         }
 
         if (event.url.pathname.startsWith("/dashboard") || event.url.pathname.startsWith("/api")) {
-            event.locals.user = authenticateUser(event.cookies.get("sid"), event.locals.redis);
+            event.locals.user = await authenticateUser(event.cookies.get("sid"), event.locals.redis);
             if(!event.locals.user) {
                 if(event.cookies.get("sid")) {
                     event.cookies.delete("sid", {path:"/"});
