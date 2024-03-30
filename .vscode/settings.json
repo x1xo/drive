@@ -1,0 +1,3 @@
+{
+    "css.lint.unknownAtRules": "ignore" //used for @apply inside style tags
+}
